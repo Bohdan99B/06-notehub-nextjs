@@ -1,14 +1,16 @@
-"use client";
+﻿"use client";
 
 import type { MouseEvent } from "react";
 import { ErrorMessage as FormikErrorMessage, Formik } from "formik";
 import * as Yup from "yup";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { createNote } from "@/lib/api";
 import type { NoteTag } from "@/types/note";
 import css from "./NoteForm.module.css";
 
 interface NoteFormProps {
-  onSubmit: (data: NoteFormValues) => Promise<void> | void;
   onCancel: () => void;
+  onSuccess?: () => void;
 }
 
 interface NoteFormValues {
@@ -34,7 +36,16 @@ const initialValues: NoteFormValues = {
   tag: "Todo",
 };
 
-export default function NoteForm({ onSubmit, onCancel }: NoteFormProps) {
+export default function NoteForm({ onCancel, onSuccess }: NoteFormProps) {
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: createNote,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["notes"] });
+    },
+  });
+
   const handleCancel = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     onCancel();
@@ -45,8 +56,9 @@ export default function NoteForm({ onSubmit, onCancel }: NoteFormProps) {
       initialValues={initialValues}
       validationSchema={validationSchema}
       onSubmit={async (values, actions) => {
-        await onSubmit(values);
+        await mutation.mutateAsync(values);
         actions.resetForm();
+        onSuccess?.();
       }}
     >
       {({ values, handleChange, handleSubmit, isSubmitting }) => (
@@ -112,11 +124,15 @@ export default function NoteForm({ onSubmit, onCancel }: NoteFormProps) {
             <button
               type="submit"
               className={css.submitButton}
-              disabled={isSubmitting}
+              disabled={isSubmitting || mutation.isPending}
             >
               Create note
             </button>
           </div>
+
+          {mutation.error instanceof Error && (
+            <p className={css.error}>{mutation.error.message}</p>
+          )}
         </form>
       )}
     </Formik>
